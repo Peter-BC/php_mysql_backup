@@ -220,7 +220,7 @@ class Database
             // backup data
             if ($primaryKey) {
 
-              $result = Db::query("SELECT * FROM `{$table}` where `{$primaryKey}`> {$start} LIMIT  1000");
+              $result = Db::query("SELECT * FROM `{$table}` where `{$primaryKey}`> {$start}  order by `{$primaryKey}` ASC LIMIT  1000");
 
             } else {
               $result = Db::query("SELECT * FROM `{$table}` WHERE 1 LIMIT {$start}, 1000");
@@ -279,7 +279,8 @@ class Database
                 if(false !== Db::execute($sql)){
                     $start += strlen($sql);
                 } else {
-                  echo $sql;exit;
+                  echo Db::error();exit;
+                  //echo $sql;exit;
                     return false;
                 }
                 $sql = '';
