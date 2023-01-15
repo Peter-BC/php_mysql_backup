@@ -21,7 +21,10 @@ class Db{
     $q = mysqli_query(self::$connid, $sql);
     $retarr = array();
     $gsql = [];
-
+    if (!$q) {
+      echo self::error();
+      exit;
+    }
     while($gsql = mysqli_fetch_array($q, MYSQLI_ASSOC)) {
         $retarr[] = $gsql;
     }
@@ -29,10 +32,21 @@ class Db{
     return $retarr;
 
   }
+  public static function error() {
+    return @mysqli_error(self::$connid);
+  }
+  public static function getPrimaryKey($table) {
+    $q = mysqli_query(self::$connid, "SHOW KEYS FROM {$table} WHERE Key_name = 'PRIMARY'");
+    $pkey = mysqli_fetch_array($q, MYSQLI_ASSOC);
+    if ($pkey['Column_name']) {
+      return $pkey['Column_name'];
+    }
+    return '';
 
+  }
   public static function getTableList() {
     $q = mysqli_query(self::$connid, 'SHOW TABLES');
-    
+
     while($gsql = mysqli_fetch_array($q, MYSQLI_NUM)) {
         $retarr[] = $gsql;
     }
@@ -73,12 +87,17 @@ class Database
      * @param array  $config 备份配置信息
      * @param string $type   执行类型，export - 备份数据， import - 还原数据
      */
+
+    public $table_count;
+
     public function __construct($file, $config, $type = 'export'){
         $this->file   = $file;
         $this->config = $config;
         Db::__init($config['database.hostname'], $config['database.user'], $config['database.password'],$config['database.database'], $config['database.hostport']);
     }
-
+    public function getPrimaryKey($table) {
+      return Db::getPrimaryKey($table);
+    }
     /**
      * 打开一个卷，用于写入数据
      * @param integer $size 写入数据的大小
@@ -159,7 +178,7 @@ class Database
      * @param integer $start 起始行数
      * @return array|bool|int  false - 备份失败
      */
-    public function backup($table = '', $start = 0){
+    public function backup($table = '', $start = 0, $primaryKey = ''){
         // 备份表结构
         if(0 == $start){
             $result = Db::query("SHOW CREATE TABLE `{$table}`");
@@ -178,8 +197,15 @@ class Database
         }
 
         // 数据总数
-        $result = Db::query("SELECT COUNT(*) AS count FROM `{$table}`");
-        $count  = $result['0']['count'];
+        if (!$this->table_count[$table]) {
+          $result = Db::query("SELECT COUNT(*) AS count FROM `{$table}`");
+          $count  = $result['0']['count'];
+          $this->table_count[$table] = $count;
+        } else {
+          $count = $this->table_count[$table];
+        }
+
+
 
         //备份表数据
         if($count){
@@ -191,17 +217,33 @@ class Database
                 $this->write($sql);
             }
 
-            // 备份数据记录
-            $result = Db::query("SELECT * FROM `{$table}` LIMIT {$start}, 1000");
+            // backup data
+            if ($primaryKey) {
 
+              $result = Db::query("SELECT * FROM `{$table}` where `{$primaryKey}`> {$start} LIMIT  1000");
+
+            } else {
+              $result = Db::query("SELECT * FROM `{$table}` WHERE 1 LIMIT {$start}, 1000");
+
+            }
+
+            if (!$result) {
+              return 0;
+            }
+            $end_id = 0;
             foreach ($result as $row) {
                 $row = array_map('addslashes', $row);
                 $sql = "INSERT INTO `{$table}` VALUES ('" . str_replace(array("\r","\n"),array('\r','\n'),implode("', '", $row)) . "');\n";
+
                 if(false === $this->write($sql)){
                     return false;
                 }
+                $end_id = $row[$primaryKey];
             }
+            if ($primaryKey) {
 
+              return array($end_id, $count);
+            }
             //还有更多数据
             if($count > $start + 1000){
                 return array($start + 1000, $count);

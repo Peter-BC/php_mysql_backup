@@ -20,14 +20,14 @@ include 'database.php';
 $bk = new mysql_backup;
 
 //export ------------------------------
-$bk->export();
+//$bk->export();
 //end export---------------------------
 
 
 //import ---------------------------------------------
-$time = '20230114-205059';
+$time = '20230115-015628'; //backup file name's first two section, before you do restore make sure this time is right.
 $time = strtotime(str_replace('-', '', $time));
-//$bk->import($time);
+$bk->import($time);
 //end import------------------------------------------
 
 class mysql_backup {
@@ -43,7 +43,7 @@ class mysql_backup {
 
       'database.hostname' => '127.0.0.1',//mysql server
       'database.hostport' => '3306', //mysql port
-      'database.user' => '',  //mysql user
+      'database.user' => 'root',  //mysql user
       'database.password' => '', //mysql password
       'database.database' => '', //database name
     ];
@@ -145,13 +145,23 @@ class mysql_backup {
           if(false !== $Database->create()){
               // backup table
               foreach ($tables as $table) {
+                $primaryKey = $Database->getPrimaryKey($table);
+                if ($table == 'hl_info_typeoptions') {
+                  //echo $primaryKey;exit;
+                }
                 echo "Backup {$table} start。。。。\n";
-                  $start = $Database->backup($table, $start);
+                  $start = $Database->backup($table, $start, $primaryKey);
+
+                  $ic = 0;
                   while (0 !== $start) {
                       if (false === $start) { // 出错
                           $this->error('Backup error!');
                       }
-                      $start = $Database->backup($table, $start[0]);
+                      if ($ic % 10 == 0) {
+                        echo $start[0]. ',';
+                      }
+                      $ic ++;
+                      $start = $Database->backup($table, $start[0], $primaryKey);
                   }
                   echo "Backup {$table} done\n";
               }
